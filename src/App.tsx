@@ -3,8 +3,11 @@ import { Layout } from './components/Layout';
 import { RestaurantList } from './components/RestaurantList';
 import { AddRestaurant } from './components/AddRestaurant';
 import { Stats } from './components/Stats';
+import { ManualSelector } from './components/ManualSelector';
 import { useAppContext } from './hooks/useAppContext';
-import { getSuggestions, recordChoice } from './lib/prediction';
+import { useGeolocation } from './hooks/useGeolocation';
+import { getSuggestions, recordChoice, trainModelIfNeeded } from './lib/prediction';
+import { supabase } from './lib/supabase';
 import { Loader2, PieChart, Home } from 'lucide-react';
 
 function App() {
@@ -17,24 +20,35 @@ function App() {
   };
 
   const { weather, loading: contextLoading, dayOfWeek } = useAppContext();
+  const { latitude, longitude } = useGeolocation();
   const [suggestions, setSuggestions] = useState<any[]>([]);
+  const [allRestaurants, setAllRestaurants] = useState<any[]>([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+
+  useEffect(() => {
+    trainModelIfNeeded();
+  }, []);
 
   useEffect(() => {
     if (!contextLoading && weather) {
       loadSuggestions();
     }
-  }, [contextLoading, weather, refreshKey]);
+  }, [contextLoading, weather, refreshKey, latitude, longitude]);
 
   async function loadSuggestions() {
     setLoadingSuggestions(true);
-    const results = await getSuggestions(weather, dayOfWeek);
+    const [results, { data: restaurants }] = await Promise.all([
+      getSuggestions(weather, dayOfWeek, latitude, longitude),
+      supabase.from('restaurants').select('*').eq('active', true).order('name')
+    ]);
     setSuggestions(results);
+    setAllRestaurants(restaurants || []);
     setLoadingSuggestions(false);
   }
 
-  async function handleChoose(restaurantId: string, isSuggestion: boolean) {
-    await recordChoice(restaurantId, weather, isSuggestion);
+  async function handleChoose(restaurantId: string, rank: number) {
+    const isSuggestionHit = rank === 0; // Only count as hit if it's the first suggestion (Rank 1)
+    await recordChoice(restaurantId, weather, isSuggestionHit);
     alert('Đã lưu lựa chọn! Chúc ngon miệng.');
     handleRestaurantAdded(); // Refresh stats/history if we had it displayed
   }
@@ -84,7 +98,7 @@ function App() {
                         <h3 className="font-bold text-lg">{s.name}</h3>
                       </div>
                       <button
-                        onClick={() => handleChoose(s.id, true)}
+                        onClick={() => handleChoose(s.id, idx)}
                         className="bg-orange-100 text-orange-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-orange-200"
                       >
                         Chọn
@@ -97,6 +111,11 @@ function App() {
                   <span className="text-sm font-medium">Chưa đủ dữ liệu để gợi ý. Hãy chọn món bên dưới!</span>
                 </div>
               )}
+
+              <ManualSelector
+                restaurants={allRestaurants}
+                onSelect={(id) => handleChoose(id, -1)}
+              />
             </div>
           </section>
 

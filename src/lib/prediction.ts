@@ -21,9 +21,13 @@ const WEIGHTS = {
     RECENCY: -0.5 // Penalty for recently chosen (variety)
 };
 
+import { trainRNN, predictRNN } from './rnn';
+
 export async function getSuggestions(
     weather: WeatherData | null,
-    dayOfWeek: number
+    dayOfWeek: number,
+    lat: number | null,
+    long: number | null
 ): Promise<Restaurant[]> {
     // 1. Fetch all restaurants
     const { data: restaurants } = await supabase.from('restaurants').select('*').eq('active', true);
@@ -33,7 +37,22 @@ export async function getSuggestions(
     const { data: history } = await supabase.from('history').select('*');
     const historyData = (history || []) as HistoryRecord[];
 
-    // 3. Calculate Scores
+    // 3. Try RNN Prediction if enough history
+    if (historyData.length >= 10) {
+        try {
+            console.log('Using RNN for prediction...');
+            // Train in background if needed (or assume trained)
+            // For MVP, let's just train here if it's fast, or rely on App.tsx to have triggered it.
+            // But to be safe, let's just call predict. If model missing, it will error or we handle it.
+            // Actually rnn.ts loads model.
+            return await predictRNN(weather, dayOfWeek, lat, long, historyData, restaurants);
+        } catch (e) {
+            console.warn('RNN Prediction failed, falling back to scoring:', e);
+        }
+    }
+
+    // 4. Fallback: Scoring Algorithm
+    console.log('Using Weighted Scoring for prediction...');
     const scores = restaurants.map(r => {
         let score = WEIGHTS.BASE;
 
@@ -77,11 +96,21 @@ export async function getSuggestions(
         return { ...r, score };
     });
 
-    // 4. Sort and return top 3
+    // 5. Sort and return top 3
     return scores
         .sort((a, b) => b.score - a.score)
         .slice(0, 3)
         .map(s => ({ id: s.id, name: s.name }));
+}
+
+export async function trainModelIfNeeded() {
+    const { data: restaurants } = await supabase.from('restaurants').select('*').eq('active', true);
+    const { data: history } = await supabase.from('history').select('*');
+    if (restaurants && history && history.length >= 5) {
+        console.log('Starting background training...');
+        await trainRNN(history as HistoryRecord[], restaurants, null, null); // Lat/Long ignored for training for now
+        console.log('Training complete.');
+    }
 }
 
 export async function recordChoice(restaurantId: string, weather: WeatherData | null, isSuggestion: boolean) {

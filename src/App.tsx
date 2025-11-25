@@ -48,7 +48,7 @@ function App() {
 
   async function handleChoose(restaurantId: string, rank: number) {
     const isSuggestionHit = rank === 0; // Only count as hit if it's the first suggestion (Rank 1)
-    await recordChoice(restaurantId, weather, isSuggestionHit);
+    await recordChoice(restaurantId, weather, isSuggestionHit, latitude, longitude);
     alert('Đã lưu lựa chọn! Chúc ngon miệng.');
     handleRestaurantAdded(); // Refresh stats/history if we had it displayed
   }

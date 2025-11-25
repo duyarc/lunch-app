@@ -13,6 +13,8 @@ interface HistoryRecord {
     weather: string;
     day_of_week: number;
     created_at: string;
+    lat?: number;
+    long?: number;
 }
 
 interface Restaurant {
@@ -127,7 +129,10 @@ export async function trainRNN(
         // Build sequence
         for (let j = 0; j < LOOKBACK_WINDOW; j++) {
             const record = sortedHistory[i - LOOKBACK_WINDOW + j];
-            const features = createFeatureVector(record.day_of_week, record.weather, currentLat, currentLong);
+            // Use historical location if available, otherwise fallback to current or 0
+            const rLat = record.lat !== undefined ? record.lat : (currentLat || 0);
+            const rLong = record.long !== undefined ? record.long : (currentLong || 0);
+            const features = createFeatureVector(record.day_of_week, record.weather, rLat, rLong);
 
             // One-hot encode restaurant
             const rIndex = restaurantIds.indexOf(record.restaurant_id);

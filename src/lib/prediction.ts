@@ -11,6 +11,8 @@ interface HistoryRecord {
     weather: string;
     day_of_week: number;
     created_at: string;
+    lat?: number;
+    long?: number;
 }
 
 // Weights for the algorithm
@@ -113,12 +115,20 @@ export async function trainModelIfNeeded() {
     }
 }
 
-export async function recordChoice(restaurantId: string, weather: WeatherData | null, isSuggestion: boolean) {
+export async function recordChoice(
+    restaurantId: string,
+    weather: WeatherData | null,
+    isSuggestion: boolean,
+    lat: number | null,
+    long: number | null
+) {
     const { error } = await supabase.from('history').insert([{
         restaurant_id: restaurantId,
         weather: weather?.condition || 'Unknown',
         day_of_week: new Date().getDay(),
-        is_suggestion_hit: isSuggestion
+        is_suggestion_hit: isSuggestion,
+        lat: lat,
+        long: long
     }]);
 
     if (error) console.error('Error recording choice:', error);

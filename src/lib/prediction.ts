@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 import { type WeatherData } from './weather';
-import { getMealTime, type MealTime } from './utils';
+import { getMealTime } from './utils';
+import { trainRNN, predictRNN } from './rnn';
 
 interface Restaurant {
     id: string;
@@ -25,8 +26,6 @@ const WEIGHTS = {
     RECENCY: -0.5 // Penalty for recently chosen (variety)
 };
 
-import { trainRNN, predictRNN } from './rnn';
-
 export async function getSuggestions(
     weather: WeatherData | null,
     dayOfWeek: number,
@@ -45,10 +44,6 @@ export async function getSuggestions(
     if (historyData.length >= 10) {
         try {
             console.log('Using RNN for prediction...');
-            // Train in background if needed (or assume trained)
-            // For MVP, let's just train here if it's fast, or rely on App.tsx to have triggered it.
-            // But to be safe, let's just call predict. If model missing, it will error or we handle it.
-            // Actually rnn.ts loads model.
             return await predictRNN(weather, dayOfWeek, lat, long, getMealTime(), historyData, restaurants);
         } catch (e) {
             console.warn('RNN Prediction failed, falling back to scoring:', e);
@@ -83,6 +78,29 @@ export async function getSuggestions(
             const rDayPicks = historyData.filter(h => h.restaurant_id === r.id && h.day_of_week === dayOfWeek).length;
             const dayProb = rDayPicks / dayPicks;
             score += dayProb * WEIGHTS.DAY;
+        }
+
+        // Context: Meal Time
+        const mealPicks = historyData.filter(h => {
+            const hDate = new Date(h.created_at);
+            const hHour = hDate.getHours();
+            let hMeal = 'dinner';
+            if (hHour >= 4 && hHour < 11) hMeal = 'breakfast';
+            else if (hHour >= 11 && hHour < 15) hMeal = 'lunch';
+            return hMeal === currentMeal;
+        }).length;
+
+        if (mealPicks > 0) {
+            const rMealPicks = historyData.filter(h => {
+                const hDate = new Date(h.created_at);
+                const hHour = hDate.getHours();
+                let hMeal = 'dinner';
+                if (hHour >= 4 && hHour < 11) hMeal = 'breakfast';
+                else if (hHour >= 11 && hHour < 15) hMeal = 'lunch';
+                return h.restaurant_id === r.id && hMeal === currentMeal;
+            }).length;
+            const mealProb = rMealPicks / mealPicks;
+            score += mealProb * WEIGHTS.MEAL_TIME;
         }
 
         // Context: Recency (Penalty)

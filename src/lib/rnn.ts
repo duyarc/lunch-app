@@ -1,10 +1,3 @@
-import * as tf from '@tensorflow/tfjs';
-import { type WeatherData } from './weather';
-import { supabase } from './supabase';
-import { type MealTime } from './utils';
-
-// --- Constants ---
-const MODEL_PATH = 'indexeddb://lunch-app-rnn-model';
 const MIN_HISTORY_FOR_TRAINING = 5; // Low for testing, increase for prod
 const EPOCHS = 50;
 const LOOKBACK_WINDOW = 3; // How many past meals to look at

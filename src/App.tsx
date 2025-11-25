@@ -51,6 +51,9 @@ function App() {
     await recordChoice(restaurantId, weather, isSuggestionHit, latitude, longitude);
     alert('Đã lưu lựa chọn! Chúc ngon miệng.');
     handleRestaurantAdded(); // Refresh stats/history if we had it displayed
+
+    // Trigger background training
+    trainModelIfNeeded();
   }
 
   return (

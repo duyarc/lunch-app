@@ -1,5 +1,6 @@
 import * as tf from '@tensorflow/tfjs';
 import { type WeatherData } from './weather';
+import { supabase } from './supabase';
 
 // --- Constants ---
 const MODEL_PATH = 'indexeddb://lunch-app-rnn-model';
@@ -58,6 +59,74 @@ function createFeatureVector(day: number, weather: string, lat: number | null, l
     return [dSin, dCos, wIdx / 7, l1, l2];
 }
 
+// --- Supabase IO Handler ---
+class SupabaseIOHandler implements tf.io.IOHandler {
+    async save(modelArtifacts: tf.io.ModelArtifacts): Promise<tf.io.SaveResult> {
+        const weightDataStr = modelArtifacts.weightData
+            ? Buffer.from(modelArtifacts.weightData).toString('base64')
+            : '';
+
+        const modelJson = {
+            modelTopology: modelArtifacts.modelTopology,
+            format: modelArtifacts.format,
+            generatedBy: modelArtifacts.generatedBy,
+            convertedBy: modelArtifacts.convertedBy
+        };
+
+        const weightsJson = {
+            weightSpecs: modelArtifacts.weightSpecs,
+            weightData: weightDataStr
+        };
+
+        const { error } = await supabase.from('models').insert([{
+            model_json: modelJson,
+            weights: weightsJson
+        }]);
+
+        if (error) {
+            console.error('Error saving model to Supabase:', error);
+            throw new Error('Failed to save to Supabase');
+        }
+
+        return {
+            modelArtifactsInfo: {
+                dateSaved: new Date(),
+                modelTopologyType: 'JSON',
+                weightDataBytes: modelArtifacts.weightData ? modelArtifacts.weightData.byteLength : 0
+            }
+        };
+    }
+
+    async load(): Promise<tf.io.ModelArtifacts> {
+        const { data, error } = await supabase
+            .from('models')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+
+        if (error || !data) {
+            throw new Error('No model found in Supabase');
+        }
+
+        const modelJson = data.model_json;
+        const weightsJson = data.weights;
+
+        const weightData = weightsJson.weightData
+            ? new Uint8Array(Buffer.from(weightsJson.weightData, 'base64')).buffer
+            : new ArrayBuffer(0);
+
+        return {
+            modelTopology: modelJson.modelTopology,
+            format: modelJson.format,
+            generatedBy: modelJson.generatedBy,
+            convertedBy: modelJson.convertedBy,
+            weightSpecs: weightsJson.weightSpecs,
+            weightData: weightData
+        };
+    }
+}
+
 // --- Model Logic ---
 
 let model: tf.LayersModel | null = null;
@@ -72,31 +141,42 @@ export async function loadOrCreateModel(numRestaurants: number) {
             throw new Error('Shape mismatch');
         }
     } catch (e) {
-        console.log('Creating new model...');
-        const newModel = tf.sequential();
+        console.log('Local model missing or invalid, trying Supabase...');
+        try {
+            model = await tf.loadLayersModel(new SupabaseIOHandler());
+            console.log('Loaded model from Supabase');
+            if (model.outputs[0].shape[1] !== numRestaurants) {
+                throw new Error('Shape mismatch');
+            }
+            // Save to local for next time
+            await model.save(MODEL_PATH);
+        } catch (supaError) {
+            console.log('Supabase model missing or invalid, creating new...');
+            const newModel = tf.sequential();
 
-        // Input: Sequence of [Feature Vector + One-Hot Previous Restaurant]
-        // Feature Vector size: 5
-        // One-Hot Restaurant size: numRestaurants
-        // Total Input Size: 5 + numRestaurants
-        const inputSize = 5 + numRestaurants;
+            // Input: Sequence of [Feature Vector + One-Hot Previous Restaurant]
+            // Feature Vector size: 5
+            // One-Hot Restaurant size: numRestaurants
+            // Total Input Size: 5 + numRestaurants
+            const inputSize = 5 + numRestaurants;
 
-        newModel.add(tf.layers.lstm({
-            units: 16,
-            returnSequences: false,
-            inputShape: [LOOKBACK_WINDOW, inputSize]
-        }));
+            newModel.add(tf.layers.lstm({
+                units: 16,
+                returnSequences: false,
+                inputShape: [LOOKBACK_WINDOW, inputSize]
+            }));
 
-        newModel.add(tf.layers.dense({ units: 16, activation: 'relu' }));
-        newModel.add(tf.layers.dense({ units: numRestaurants, activation: 'softmax' }));
+            newModel.add(tf.layers.dense({ units: 16, activation: 'relu' }));
+            newModel.add(tf.layers.dense({ units: numRestaurants, activation: 'softmax' }));
 
-        newModel.compile({
-            optimizer: 'adam',
-            loss: 'categoricalCrossentropy',
-            metrics: ['accuracy']
-        });
+            newModel.compile({
+                optimizer: 'adam',
+                loss: 'categoricalCrossentropy',
+                metrics: ['accuracy']
+            });
 
-        model = newModel;
+            model = newModel;
+        }
     }
     return model;
 }
@@ -168,6 +248,15 @@ export async function trainRNN(
     });
 
     await model.save(MODEL_PATH);
+
+    // Also save to Supabase
+    try {
+        console.log('Syncing model to Supabase...');
+        await model.save(new SupabaseIOHandler());
+        console.log('Model synced to Supabase');
+    } catch (err) {
+        console.error('Failed to sync model to Supabase:', err);
+    }
 
     xs.dispose();
     ys.dispose();

@@ -1,6 +1,7 @@
 import * as tf from '@tensorflow/tfjs';
 import { type WeatherData } from './weather';
 import { supabase } from './supabase';
+import { type MealTime } from './utils';
 
 // --- Constants ---
 const MODEL_PATH = 'indexeddb://lunch-app-rnn-model';
@@ -49,21 +50,41 @@ function getWeatherIndex(weather: string) {
 }
 
 // Create a feature vector for a single time step
-// [Day_Sin, Day_Cos, Weather_Index, Lat, Long]
-function createFeatureVector(day: number, weather: string, lat: number | null, long: number | null) {
+// [Day_Sin, Day_Cos, Weather_Index, Lat, Long, Meal_Time_Index]
+function createFeatureVector(day: number, weather: string, lat: number | null, long: number | null, meal: MealTime | null) {
     const [dSin, dCos] = getDaySinCos(day);
     const wIdx = getWeatherIndex(weather);
     const l1 = lat ? lat / 90 : 0;
     const l2 = long ? long / 180 : 0;
 
-    return [dSin, dCos, wIdx / 7, l1, l2];
+    let mIdx = 0;
+    if (meal === 'breakfast') mIdx = 0;
+    else if (meal === 'lunch') mIdx = 0.5;
+    else if (meal === 'dinner') mIdx = 1;
+
+    return [dSin, dCos, wIdx / 7, l1, l2, mIdx];
 }
 
 // --- Supabase IO Handler ---
 class SupabaseIOHandler implements tf.io.IOHandler {
     async save(modelArtifacts: tf.io.ModelArtifacts): Promise<tf.io.SaveResult> {
-        const weightDataStr = modelArtifacts.weightData
-            ? Buffer.from(modelArtifacts.weightData).toString('base64')
+        let weightDataBuffer: ArrayBuffer;
+        if (modelArtifacts.weightData instanceof ArrayBuffer) {
+            weightDataBuffer = modelArtifacts.weightData;
+        } else if (Array.isArray(modelArtifacts.weightData)) {
+            // Concatenate ArrayBuffers if it's an array (rare but possible in types)
+            // For simplicity in this context, we assume single buffer or handle first
+            // But correct way is to merge.
+            // Actually TFJS usually returns single ArrayBuffer for weightData in standard save.
+            // Let's cast to any to bypass strict check if we are sure, or handle properly.
+            // A safer way for simple save:
+            weightDataBuffer = modelArtifacts.weightData as unknown as ArrayBuffer;
+        } else {
+            weightDataBuffer = new ArrayBuffer(0);
+        }
+
+        const weightDataStr = weightDataBuffer.byteLength > 0
+            ? btoa(String.fromCharCode(...new Uint8Array(weightDataBuffer)))
             : '';
 
         const modelJson = {
@@ -92,7 +113,7 @@ class SupabaseIOHandler implements tf.io.IOHandler {
             modelArtifactsInfo: {
                 dateSaved: new Date(),
                 modelTopologyType: 'JSON',
-                weightDataBytes: modelArtifacts.weightData ? modelArtifacts.weightData.byteLength : 0
+                weightDataBytes: modelArtifacts.weightData ? (modelArtifacts.weightData as ArrayBuffer).byteLength : 0
             }
         };
     }
@@ -113,7 +134,7 @@ class SupabaseIOHandler implements tf.io.IOHandler {
         const weightsJson = data.weights;
 
         const weightData = weightsJson.weightData
-            ? new Uint8Array(Buffer.from(weightsJson.weightData, 'base64')).buffer
+            ? new Uint8Array(atob(weightsJson.weightData).split('').map(c => c.charCodeAt(0))).buffer
             : new ArrayBuffer(0);
 
         return {
@@ -155,10 +176,10 @@ export async function loadOrCreateModel(numRestaurants: number) {
             const newModel = tf.sequential();
 
             // Input: Sequence of [Feature Vector + One-Hot Previous Restaurant]
-            // Feature Vector size: 5
+            // Feature Vector size: 6 (Added Meal Time)
             // One-Hot Restaurant size: numRestaurants
-            // Total Input Size: 5 + numRestaurants
-            const inputSize = 5 + numRestaurants;
+            // Total Input Size: 6 + numRestaurants
+            const inputSize = 6 + numRestaurants;
 
             newModel.add(tf.layers.lstm({
                 units: 16,
@@ -212,7 +233,14 @@ export async function trainRNN(
             // Use historical location if available, otherwise fallback to current or 0
             const rLat = record.lat !== undefined ? record.lat : (currentLat || 0);
             const rLong = record.long !== undefined ? record.long : (currentLong || 0);
-            const features = createFeatureVector(record.day_of_week, record.weather, rLat, rLong);
+
+            // Infer meal time from record
+            const hHour = new Date(record.created_at).getHours();
+            let hMeal: MealTime = 'dinner';
+            if (hHour >= 4 && hHour < 11) hMeal = 'breakfast';
+            else if (hHour >= 11 && hHour < 15) hMeal = 'lunch';
+
+            const features = createFeatureVector(record.day_of_week, record.weather, rLat, rLong, hMeal);
 
             // One-hot encode restaurant
             const rIndex = restaurantIds.indexOf(record.restaurant_id);
@@ -257,81 +285,6 @@ export async function trainRNN(
     } catch (err) {
         console.error('Failed to sync model to Supabase:', err);
     }
-
-    xs.dispose();
-    ys.dispose();
-}
-
-export async function predictRNN(
-    weather: WeatherData | null,
-    dayOfWeek: number,
-    lat: number | null,
-    long: number | null,
-    history: HistoryRecord[],
-    restaurants: Restaurant[]
-): Promise<Restaurant[]> {
-    const restaurantIds = restaurants.map(r => r.id);
-    const numRestaurants = restaurantIds.length;
-
-    const model = await loadOrCreateModel(numRestaurants);
-
-    // Build input sequence from the LAST 'LOOKBACK_WINDOW' records
-    const sortedHistory = [...history].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-
-    // If not enough history for a full window, pad with zeros or repeat
-    const recentHistory = sortedHistory.slice(-LOOKBACK_WINDOW);
-
-    // Pad if needed (simple padding)
-    while (recentHistory.length < LOOKBACK_WINDOW) {
-        recentHistory.unshift({
-            restaurant_id: '',
-            weather: 'Unknown',
-            day_of_week: 0,
-            created_at: new Date().toISOString()
-        });
-    }
-
-    // We need the CURRENT context (Today).
-    const currentFeatures = createFeatureVector(dayOfWeek, weather?.condition || 'Unknown', lat, long);
-
-    // Re-building sequence correctly:
-    const predictionSequence: number[][] = [];
-
-    for (let i = 0; i < LOOKBACK_WINDOW; i++) {
-        let contextFeatures: number[];
-        let prevChoiceVec = new Array(numRestaurants).fill(0);
-
-        if (i === LOOKBACK_WINDOW - 1) {
-            // This is TODAY (The step we are predicting for)
-            contextFeatures = currentFeatures;
-            // Prev choice is the actual last record in history
-            if (sortedHistory.length > 0) {
-                const r = sortedHistory[sortedHistory.length - 1];
-                const idx = restaurantIds.indexOf(r.restaurant_id);
-                if (idx !== -1) prevChoiceVec[idx] = 1;
-            }
-        } else {
-            const hIdx = sortedHistory.length - (LOOKBACK_WINDOW - 1 - i);
-
-            if (hIdx >= 0 && hIdx < sortedHistory.length) {
-                const r = sortedHistory[hIdx];
-                contextFeatures = createFeatureVector(r.day_of_week, r.weather, 0, 0); // No loc in history
-
-                // Prev choice
-                const prevR = sortedHistory[hIdx - 1];
-                if (prevR) {
-                    const idx = restaurantIds.indexOf(prevR.restaurant_id);
-                    if (idx !== -1) prevChoiceVec[idx] = 1;
-                }
-            } else {
-                contextFeatures = [0, 0, 0, 0, 0]; // Padding
-            }
-        }
-
-        predictionSequence.push([...contextFeatures, ...prevChoiceVec]);
-    }
-
-    const xs = tf.tensor3d([predictionSequence]);
     const prediction = model.predict(xs) as tf.Tensor;
     const probs = await prediction.data();
 

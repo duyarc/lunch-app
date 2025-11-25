@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { BarChart3, TrendingUp, Calendar, Cloud } from 'lucide-react';
+import { BarChart3, TrendingUp, Calendar, Cloud, Clock } from 'lucide-react';
+import { getMealTime, type MealTime } from '../lib/utils';
 
 interface StatsData {
     totalPicks: number;
     accuracy: number;
     topRestaurants: { name: string; count: number }[];
     byWeather: { weather: string; count: number }[];
+    byMeal: { meal: string; top: { name: string; count: number }[] }[];
 }
 
 export function Stats() {
@@ -26,7 +28,7 @@ export function Stats() {
             if (error) throw error;
 
             if (!history || history.length === 0) {
-                setStats({ totalPicks: 0, accuracy: 0, topRestaurants: [], byWeather: [] });
+                setStats({ totalPicks: 0, accuracy: 0, topRestaurants: [], byWeather: [], byMeal: [] });
                 return;
             }
 
@@ -56,7 +58,33 @@ export function Stats() {
                 .map(([weather, count]) => ({ weather, count }))
                 .sort((a, b) => b.count - a.count);
 
-            setStats({ totalPicks, accuracy, topRestaurants, byWeather });
+            // By Meal Time
+            const mealGroups: Record<string, Record<string, number>> = {
+                breakfast: {},
+                lunch: {},
+                dinner: {}
+            };
+
+            history.forEach((h: any) => {
+                const date = new Date(h.created_at);
+                const hour = date.getHours();
+                let meal: MealTime = 'dinner';
+                if (hour >= 4 && hour < 11) meal = 'breakfast';
+                else if (hour >= 11 && hour < 15) meal = 'lunch';
+
+                const name = h.restaurants?.name || 'Unknown';
+                mealGroups[meal][name] = (mealGroups[meal][name] || 0) + 1;
+            });
+
+            const byMeal = Object.entries(mealGroups).map(([meal, counts]) => {
+                const top = Object.entries(counts)
+                    .map(([name, count]) => ({ name, count }))
+                    .sort((a, b) => b.count - a.count)
+                    .slice(0, 3);
+                return { meal, top };
+            });
+
+            setStats({ totalPicks, accuracy, topRestaurants, byWeather, byMeal });
         } catch (err) {
             console.error('Error fetching stats:', err);
         } finally {
@@ -130,6 +158,34 @@ export function Stats() {
                     ))}
                 </div>
             </div>
-        </div>
+
+            <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-100">
+                <h3 className="font-semibold text-slate-800 mb-4 flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-purple-500" />
+                    Theo Bữa Ăn
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {stats.byMeal.map((group) => (
+                        <div key={group.meal} className="bg-slate-50 p-3 rounded-lg">
+                            <h4 className="text-xs font-bold uppercase text-slate-500 mb-2 border-b border-slate-200 pb-1">
+                                {group.meal === 'breakfast' ? 'Sáng' : group.meal === 'lunch' ? 'Trưa' : 'Tối'}
+                            </h4>
+                            {group.top.length > 0 ? (
+                                <div className="space-y-1">
+                                    {group.top.map((r, idx) => (
+                                        <div key={r.name} className="flex justify-between text-sm">
+                                            <span className="text-slate-700 truncate">{idx + 1}. {r.name}</span>
+                                            <span className="font-medium text-slate-900">{r.count}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <span className="text-xs text-slate-400 italic">Chưa có dữ liệu</span>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div >
     );
 }

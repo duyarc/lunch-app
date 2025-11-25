@@ -8,6 +8,7 @@ import { useAppContext } from './hooks/useAppContext';
 import { useGeolocation } from './hooks/useGeolocation';
 import { getSuggestions, recordChoice, trainModelIfNeeded } from './lib/prediction';
 import { supabase } from './lib/supabase';
+import { getMealTime, getMealTitle } from './lib/utils';
 import { Loader2, PieChart, Home } from 'lucide-react';
 
 function App() {
@@ -33,6 +34,8 @@ function App() {
     if (!contextLoading && weather) {
       loadSuggestions();
     }
+    const meal = getMealTime();
+    document.title = getMealTitle(meal);
   }, [contextLoading, weather, refreshKey, latitude, longitude]);
 
   async function loadSuggestions() {
@@ -81,7 +84,7 @@ function App() {
         <div className="space-y-8">
           <section>
             <div className="bg-gradient-to-br from-orange-500 to-red-600 rounded-2xl p-6 text-white shadow-lg mb-6">
-              <h2 className="text-2xl font-bold mb-2">Hôm nay ăn gì?</h2>
+              <h2 className="text-2xl font-bold mb-2">{getMealTitle(getMealTime())}</h2>
               <div className="flex items-center gap-2 text-orange-100 text-sm mb-4">
                 <span>{weather?.description || 'Đang tải thời tiết...'}</span>
                 <span>•</span>

@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { type WeatherData } from './weather';
+import { getMealTime, type MealTime } from './utils';
 
 interface Restaurant {
     id: string;
@@ -20,6 +21,7 @@ const WEIGHTS = {
     BASE: 1.0,
     WEATHER: 2.0, // High impact for weather
     DAY: 1.5,     // Medium impact for day of week
+    MEAL_TIME: 2.5, // Very High impact for meal time (Breakfast/Lunch/Dinner)
     RECENCY: -0.5 // Penalty for recently chosen (variety)
 };
 
@@ -47,7 +49,7 @@ export async function getSuggestions(
             // For MVP, let's just train here if it's fast, or rely on App.tsx to have triggered it.
             // But to be safe, let's just call predict. If model missing, it will error or we handle it.
             // Actually rnn.ts loads model.
-            return await predictRNN(weather, dayOfWeek, lat, long, historyData, restaurants);
+            return await predictRNN(weather, dayOfWeek, lat, long, getMealTime(), historyData, restaurants);
         } catch (e) {
             console.warn('RNN Prediction failed, falling back to scoring:', e);
         }
@@ -55,6 +57,7 @@ export async function getSuggestions(
 
     // 4. Fallback: Scoring Algorithm
     console.log('Using Weighted Scoring for prediction...');
+    const currentMeal = getMealTime();
     const scores = restaurants.map(r => {
         let score = WEIGHTS.BASE;
 

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { BarChart3, TrendingUp, Calendar, Cloud, Clock } from 'lucide-react';
-import { getMealTime, type MealTime } from '../lib/utils';
+import { type MealTime } from '../lib/utils';
 
 interface StatsData {
     totalPicks: number;

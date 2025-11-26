@@ -1,6 +1,4 @@
-import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
 import { Loader2, MapPin } from 'lucide-react';
 
 interface Restaurant {
@@ -9,45 +7,12 @@ interface Restaurant {
     active: boolean;
 }
 
-export function RestaurantList() {
-    const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
+interface RestaurantListProps {
+    restaurants: Restaurant[];
+}
+
+export function RestaurantList({ restaurants }: RestaurantListProps) {
     const navigate = useNavigate();
-
-    useEffect(() => {
-        fetchRestaurants();
-    }, []);
-
-    async function fetchRestaurants() {
-        try {
-            setLoading(true);
-            const { data, error } = await supabase
-                .from('restaurants')
-                .select('*')
-                .order('name');
-
-            if (error) throw error;
-            setRestaurants(data || []);
-        } catch (err) {
-            console.error('Error fetching restaurants:', err);
-            setError('Không thể tải danh sách quán ăn.');
-        } finally {
-            setLoading(false);
-        }
-    }
-
-    if (loading) {
-        return (
-            <div className="flex justify-center py-8">
-                <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
-            </div>
-        );
-    }
-
-    if (error) {
-        return <div className="text-red-500 text-center py-4">{error}</div>;
-    }
 
     if (restaurants.length === 0) {
         return (
@@ -59,9 +24,9 @@ export function RestaurantList() {
 
     return (
         <div className="space-y-3">
-            <h2 className="text-lg font-semibold text-slate-800">Danh sách quán ăn</h2>
+            <h2 className="text-lg font-semibold text-slate-800">Danh sách quán</h2>
             <div className="grid gap-3">
-                {restaurants.map((restaurant) => (
+                {restaurants.map((restaurant, idx) => (
                     <div
                         key={restaurant.id}
                         onClick={() => navigate(`/restaurant/${restaurant.id}`)}

@@ -9,7 +9,6 @@ import { RestaurantDetail } from './components/RestaurantDetail';
 import { useAppContext } from './hooks/useAppContext';
 import { useGeolocation } from './hooks/useGeolocation';
 import { getSuggestions, recordChoice, trainModelIfNeeded } from './lib/prediction';
-import { supabase } from './lib/supabase';
 import { getMealTime, getMealTitle } from './lib/utils';
 import { Loader2, PieChart, Home } from 'lucide-react';
 
@@ -43,12 +42,11 @@ function HomePage() {
 
   async function loadSuggestions() {
     setLoadingSuggestions(true);
-    const [results, { data: restaurants }] = await Promise.all([
-      getSuggestions(weather, dayOfWeek, latitude, longitude),
-      supabase.from('restaurants').select('*').eq('active', true).order('name')
-    ]);
-    setSuggestions(results);
-    setAllRestaurants(restaurants || []);
+    // Fetch ALL suggestions sorted by probability
+    const allSorted = await getSuggestions(weather, dayOfWeek, latitude, longitude, -1);
+
+    setSuggestions(allSorted.slice(0, 3)); // Top 3 for "Gợi ý"
+    setAllRestaurants(allSorted); // All for "Danh sách"
     setLoadingSuggestions(false);
   }
 
@@ -131,7 +129,7 @@ function HomePage() {
           </section>
 
           <section>
-            <RestaurantList key={refreshKey} />
+            <RestaurantList key={refreshKey} restaurants={allRestaurants} />
             <AddRestaurant onAdded={handleRestaurantAdded} />
           </section>
         </div>

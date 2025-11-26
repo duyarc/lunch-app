@@ -323,7 +323,8 @@ export async function predictRNN(
     long: number | null,
     currentMeal: MealTime,
     history: HistoryRecord[],
-    restaurants: Restaurant[]
+    restaurants: Restaurant[],
+    limit: number = 3
 ): Promise<Restaurant[]> {
     const restaurantIds = restaurants.map(r => r.id);
     const numRestaurants = restaurantIds.length;
@@ -410,5 +411,6 @@ export async function predictRNN(
         score: probs[i]
     }));
 
-    return scored.sort((a, b) => b.score - a.score).slice(0, 3);
+    const sorted = scored.sort((a, b) => b.score - a.score);
+    return limit === -1 ? sorted : sorted.slice(0, limit);
 }

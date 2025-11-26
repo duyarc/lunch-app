@@ -31,7 +31,8 @@ export async function getSuggestions(
     weather: WeatherData | null,
     dayOfWeek: number,
     lat: number | null,
-    long: number | null
+    long: number | null,
+    limit: number = 3
 ): Promise<Restaurant[]> {
     // 1. Fetch all restaurants
     const { data: restaurants } = await supabase.from('restaurants').select('*').eq('active', true);
@@ -58,7 +59,7 @@ export async function getSuggestions(
     if (historyData.length >= 15) {
         try {
             console.log('Using RNN for prediction...');
-            return await predictRNN(weather, dayOfWeek, lat, long, getMealTime(), historyData, restaurants);
+            return await predictRNN(weather, dayOfWeek, lat, long, getMealTime(), historyData, restaurants, limit);
         } catch (e) {
             console.warn('RNN Prediction failed, falling back to scoring:', e);
         }
@@ -133,11 +134,9 @@ export async function getSuggestions(
         return { ...r, score };
     });
 
-    // 5. Sort and return top 3
-    return scores
-        .sort((a, b) => b.score - a.score)
-        .slice(0, 3)
-        .map(s => ({ id: s.id, name: s.name }));
+    // 5. Sort and return
+    const sorted = scores.sort((a, b) => b.score - a.score);
+    return limit === -1 ? sorted : sorted.slice(0, limit);
 }
 
 export async function trainModelIfNeeded() {

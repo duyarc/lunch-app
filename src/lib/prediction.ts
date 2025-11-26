@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
 import { type WeatherData } from './weather';
-import { getMealTime } from './utils';
+import { getMealTime, getUserId } from './utils';
 import { trainRNN, predictRNN } from './rnn';
 
 interface Restaurant {
@@ -15,6 +15,7 @@ interface HistoryRecord {
     created_at: string;
     lat?: number;
     long?: number;
+    user_id?: string;
 }
 
 // Weights for the algorithm
@@ -37,8 +38,21 @@ export async function getSuggestions(
     if (!restaurants || restaurants.length === 0) return [];
 
     // 2. Fetch history for context analysis
+    // Strategy: Fetch GLOBAL history for cold start, but prioritize LOCAL for personalization?
+    // Actually, for "Hybrid", we should fetch:
+    // - Global stats (for fallback scoring)
+    // - Local history (for RNN context)
+
+    // For simplicity in this step: Fetch ALL history but separate them.
     const { data: history } = await supabase.from('history').select('*');
-    const historyData = (history || []) as HistoryRecord[];
+    const allHistory = (history || []) as HistoryRecord[];
+    const userId = getUserId();
+    const userHistory = allHistory.filter(h => h.user_id === userId);
+
+    // Use userHistory for RNN if available, otherwise might fallback to global?
+    // The RNN model (Local) expects user history sequence.
+    const historyData = userHistory.length >= 3 ? userHistory : allHistory; // Fallback to global if new user
+
 
     // 3. Try RNN Prediction if enough history
     if (historyData.length >= 10) {
@@ -128,11 +142,30 @@ export async function getSuggestions(
 
 export async function trainModelIfNeeded() {
     const { data: restaurants } = await supabase.from('restaurants').select('*').eq('active', true);
-    const { data: history } = await supabase.from('history').select('*');
+
+    // Fetch ONLY local user history for fine-tuning
+    const userId = getUserId();
+    const { data: history } = await supabase
+        .from('history')
+        .select('*')
+        .eq('user_id', userId);
+
     if (restaurants && history && history.length >= 5) {
-        console.log('Starting background training...');
-        await trainRNN(history as HistoryRecord[], restaurants, null, null); // Lat/Long ignored for training for now
-        console.log('Training complete.');
+        console.log('Starting background training (Local Fine-tuning)...');
+        await trainRNN(history as HistoryRecord[], restaurants, null, null);
+        console.log('Local Training complete.');
+    }
+}
+
+export async function trainGlobalModel() {
+    const { data: restaurants } = await supabase.from('restaurants').select('*').eq('active', true);
+    // Fetch ALL history
+    const { data: history } = await supabase.from('history').select('*');
+
+    if (restaurants && history && history.length >= 20) {
+        console.log('Starting GLOBAL training...');
+        await trainRNN(history as HistoryRecord[], restaurants, null, null, true);
+        console.log('Global training complete.');
     }
 }
 
@@ -143,13 +176,15 @@ export async function recordChoice(
     lat: number | null,
     long: number | null
 ) {
+    const userId = getUserId();
     const { error } = await supabase.from('history').insert([{
         restaurant_id: restaurantId,
         weather: weather?.condition || 'Unknown',
         day_of_week: new Date().getDay(),
         is_suggestion_hit: isSuggestion,
         lat: lat,
-        long: long
+        long: long,
+        user_id: userId
     }]);
 
     if (error) console.error('Error recording choice:', error);

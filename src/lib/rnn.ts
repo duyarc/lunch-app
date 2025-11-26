@@ -153,52 +153,54 @@ class SupabaseIOHandler implements tf.io.IOHandler {
 let model: tf.LayersModel | null = null;
 
 export async function loadOrCreateModel(numRestaurants: number) {
+    // 1. Try Local Model (IndexedDB) - Fine-tuned for this user
     try {
         model = await tf.loadLayersModel(MODEL_PATH);
-        console.log('Loaded model from IndexedDB');
-        // Check if output shape matches current restaurants. If not, recreate.
+        console.log('Loaded LOCAL model from IndexedDB');
         if (model.outputs[0].shape[1] !== numRestaurants) {
             console.log('Restaurant count changed, recreating model...');
             throw new Error('Shape mismatch');
         }
+        return model;
     } catch (e) {
-        console.log('Local model missing or invalid, trying Supabase...');
-        try {
-            model = await tf.loadLayersModel(new SupabaseIOHandler());
-            console.log('Loaded model from Supabase');
-            if (model.outputs[0].shape[1] !== numRestaurants) {
-                throw new Error('Shape mismatch');
-            }
-            // Save to local for next time
-            await model.save(MODEL_PATH);
-        } catch (supaError) {
-            console.log('Supabase model missing or invalid, creating new...');
-            const newModel = tf.sequential();
-
-            // Input: Sequence of [Feature Vector + One-Hot Previous Restaurant]
-            // Feature Vector size: 6 (Added Meal Time)
-            // One-Hot Restaurant size: numRestaurants
-            // Total Input Size: 6 + numRestaurants
-            const inputSize = 6 + numRestaurants;
-
-            newModel.add(tf.layers.lstm({
-                units: 16,
-                returnSequences: false,
-                inputShape: [LOOKBACK_WINDOW, inputSize]
-            }));
-
-            newModel.add(tf.layers.dense({ units: 16, activation: 'relu' }));
-            newModel.add(tf.layers.dense({ units: numRestaurants, activation: 'softmax' }));
-
-            newModel.compile({
-                optimizer: 'adam',
-                loss: 'categoricalCrossentropy',
-                metrics: ['accuracy']
-            });
-
-            model = newModel;
-        }
+        console.log('Local model missing, trying Global Model...');
     }
+
+    // 2. Try Global Model (Supabase) - The "Parent" Brain
+    try {
+        model = await tf.loadLayersModel(new SupabaseIOHandler());
+        console.log('Loaded GLOBAL model from Supabase');
+        if (model.outputs[0].shape[1] !== numRestaurants) {
+            throw new Error('Shape mismatch');
+        }
+        // IMPORTANT: Do NOT save this as local model immediately.
+        // We only save to local when we actually fine-tune (train) it.
+        // This keeps the "clean" global model separate from "dirty" local model until necessary.
+        return model;
+    } catch (supaError) {
+        console.log('Global model missing, creating fresh...');
+    }
+
+    // 3. Create Fresh Model (Cold Start)
+    const newModel = tf.sequential();
+    const inputSize = 6 + numRestaurants;
+
+    newModel.add(tf.layers.lstm({
+        units: 16,
+        returnSequences: false,
+        inputShape: [LOOKBACK_WINDOW, inputSize]
+    }));
+
+    newModel.add(tf.layers.dense({ units: 16, activation: 'relu' }));
+    newModel.add(tf.layers.dense({ units: numRestaurants, activation: 'softmax' }));
+
+    newModel.compile({
+        optimizer: 'adam',
+        loss: 'categoricalCrossentropy',
+        metrics: ['accuracy']
+    });
+
+    model = newModel;
     return model;
 }
 
@@ -206,7 +208,8 @@ export async function trainRNN(
     history: HistoryRecord[],
     restaurants: Restaurant[],
     currentLat: number | null,
-    currentLong: number | null
+    currentLong: number | null,
+    saveToGlobal: boolean = false // Default to Local Training only
 ) {
     if (history.length < MIN_HISTORY_FOR_TRAINING) return;
 
@@ -275,16 +278,21 @@ export async function trainRNN(
         }
     });
 
+    // ALWAYS save to Local (IndexedDB) after training
     await model.save(MODEL_PATH);
+    console.log('Model saved to Local (IndexedDB)');
 
-    // Also save to Supabase
-    try {
-        console.log('Syncing model to Supabase...');
-        await model.save(new SupabaseIOHandler());
-        console.log('Model synced to Supabase');
-    } catch (err) {
-        console.error('Failed to sync model to Supabase:', err);
+    // OPTIONALLY save to Global (Supabase)
+    if (saveToGlobal) {
+        try {
+            console.log('Syncing model to Supabase (Global)...');
+            await model.save(new SupabaseIOHandler());
+            console.log('Model synced to Supabase');
+        } catch (err) {
+            console.error('Failed to sync model to Supabase:', err);
+        }
     }
+
     const prediction = model.predict(xs) as tf.Tensor;
     const probs = await prediction.data();
 

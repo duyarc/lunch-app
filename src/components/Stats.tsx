@@ -187,31 +187,7 @@ export function Stats() {
                 </div>
             </div>
 
-            {/* Admin Zone */}
-            <div className="mt-8 p-4 border-t border-slate-200">
-                <h4 className="text-xs font-bold text-slate-400 uppercase mb-2">Admin Zone</h4>
-                <button
-                    onClick={async () => {
-                        if (confirm('Bạn có chắc muốn train lại Model Tổng (Global) từ dữ liệu của TẤT CẢ mọi người không? Việc này sẽ tốn tài nguyên.')) {
-                            try {
-                                alert('Đã bắt đầu train Global Model. Vui lòng đợi...');
-                                const result = await import('../lib/prediction').then(m => m.trainGlobalModel());
-                                if (result) {
-                                    alert('Training successful! Model đã được cập nhật lên Supabase.');
-                                } else {
-                                    alert('Training skipped. Không đủ dữ liệu (cần ít nhất 20 records).');
-                                }
-                            } catch (e) {
-                                console.error(e);
-                                alert('Training failed. Kiểm tra console để biết chi tiết.');
-                            }
-                        }
-                    }}
-                    className="text-xs text-slate-500 hover:text-orange-600 underline"
-                >
-                    Train Global Brain
-                </button>
-            </div>
+
         </div>
     );
 }

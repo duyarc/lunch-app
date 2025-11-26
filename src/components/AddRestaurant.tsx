@@ -9,6 +9,7 @@ interface AddRestaurantProps {
 export function AddRestaurant({ onAdded }: AddRestaurantProps) {
     const [name, setName] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [status, setStatus] = useState<string>('');
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
@@ -16,6 +17,7 @@ export function AddRestaurant({ onAdded }: AddRestaurantProps) {
 
         try {
             setIsSubmitting(true);
+            setStatus('');
             const { error } = await supabase
                 .from('restaurants')
                 .insert([{ name: name.trim() }]);
@@ -24,6 +26,16 @@ export function AddRestaurant({ onAdded }: AddRestaurantProps) {
 
             setName('');
             onAdded();
+
+            // Trigger Auto-Retrain
+            setStatus('Đang cập nhật trí tuệ nhân tạo (AI)...');
+            import('../lib/prediction').then(m => {
+                m.trainGlobalModel().then(() => {
+                    setStatus('Đã cập nhật AI thành công!');
+                    setTimeout(() => setStatus(''), 3000);
+                });
+            });
+
         } catch (err) {
             console.error('Error adding restaurant:', err);
             alert('Có lỗi xảy ra khi thêm quán.');
@@ -33,8 +45,8 @@ export function AddRestaurant({ onAdded }: AddRestaurantProps) {
     }
 
     return (
-        <form onSubmit={handleSubmit} className="mt-6">
-            <div className="flex gap-2">
+        <div className="mt-6">
+            <form onSubmit={handleSubmit} className="flex gap-2">
                 <input
                     type="text"
                     value={name}
@@ -55,7 +67,13 @@ export function AddRestaurant({ onAdded }: AddRestaurantProps) {
                     )}
                     Thêm
                 </button>
-            </div>
-        </form>
+            </form>
+            {status && (
+                <div className="mt-2 text-xs text-orange-600 flex items-center gap-1 animate-pulse">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    {status}
+                </div>
+            )}
+        </div>
     );
 }

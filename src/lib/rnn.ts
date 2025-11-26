@@ -158,7 +158,7 @@ export async function loadOrCreateModel(numRestaurants: number) {
         model = await tf.loadLayersModel(MODEL_PATH);
         console.log('Loaded LOCAL model from IndexedDB');
         if (model.outputs[0].shape[1] !== numRestaurants) {
-            console.log('Restaurant count changed, recreating model...');
+            console.log(`Restaurant count changed (Local): Expected ${numRestaurants}, got ${model.outputs[0].shape[1]}. Recreating model...`);
             throw new Error('Shape mismatch');
         }
         return model;
@@ -171,6 +171,7 @@ export async function loadOrCreateModel(numRestaurants: number) {
         model = await tf.loadLayersModel(new SupabaseIOHandler());
         console.log('Loaded GLOBAL model from Supabase');
         if (model.outputs[0].shape[1] !== numRestaurants) {
+            console.log(`Restaurant count changed (Global): Expected ${numRestaurants}, got ${model.outputs[0].shape[1]}.`);
             throw new Error('Shape mismatch');
         }
         // IMPORTANT: Do NOT save this as local model immediately.

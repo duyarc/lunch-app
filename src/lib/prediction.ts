@@ -166,7 +166,9 @@ export async function trainGlobalModel() {
         console.log('Starting GLOBAL training...');
         await trainRNN(history as HistoryRecord[], restaurants, null, null, true);
         console.log('Global training complete.');
+        return true;
     }
+    return false;
 }
 
 export async function recordChoice(

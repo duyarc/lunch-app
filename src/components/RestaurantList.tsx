@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { Loader2, MapPin } from 'lucide-react';
+import { MapPin } from 'lucide-react';
 
 interface Restaurant {
     id: string;
@@ -26,7 +26,7 @@ export function RestaurantList({ restaurants }: RestaurantListProps) {
         <div className="space-y-3">
             <h2 className="text-lg font-semibold text-slate-800">Danh sách quán</h2>
             <div className="grid gap-3">
-                {restaurants.map((restaurant, idx) => (
+                {restaurants.map((restaurant) => (
                     <div
                         key={restaurant.id}
                         onClick={() => navigate(`/restaurant/${restaurant.id}`)}

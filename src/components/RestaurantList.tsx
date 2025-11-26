@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Loader2, MapPin } from 'lucide-react';
 
@@ -12,6 +13,7 @@ export function RestaurantList() {
     const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const navigate = useNavigate();
 
     useEffect(() => {
         fetchRestaurants();
@@ -62,7 +64,8 @@ export function RestaurantList() {
                 {restaurants.map((restaurant) => (
                     <div
                         key={restaurant.id}
-                        className="p-4 bg-white rounded-xl border border-slate-200 shadow-sm flex items-center gap-3"
+                        onClick={() => navigate(`/restaurant/${restaurant.id}`)}
+                        className="p-4 bg-white rounded-xl border border-slate-200 shadow-sm flex items-center gap-3 cursor-pointer hover:border-orange-300 hover:shadow-md transition-all"
                     >
                         <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center text-orange-600">
                             <MapPin className="w-5 h-5" />

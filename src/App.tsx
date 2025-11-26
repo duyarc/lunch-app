@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
+import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { RestaurantList } from './components/RestaurantList';
 import { AddRestaurant } from './components/AddRestaurant';
 import { Stats } from './components/Stats';
 import { ManualSelector } from './components/ManualSelector';
+import { RestaurantDetail } from './components/RestaurantDetail';
 import { useAppContext } from './hooks/useAppContext';
 import { useGeolocation } from './hooks/useGeolocation';
 import { getSuggestions, recordChoice, trainModelIfNeeded } from './lib/prediction';
@@ -11,10 +13,11 @@ import { supabase } from './lib/supabase';
 import { getMealTime, getMealTitle } from './lib/utils';
 import { Loader2, PieChart, Home } from 'lucide-react';
 
-function App() {
+function HomePage() {
   // Key to force re-render of list when adding new item
   const [refreshKey, setRefreshKey] = useState(0);
   const [view, setView] = useState<'home' | 'stats'>('home');
+  const navigate = useNavigate();
 
   const handleRestaurantAdded = () => {
     setRefreshKey((prev) => prev + 1);
@@ -101,9 +104,9 @@ function App() {
                 <div className="grid gap-3 mt-4">
                   {suggestions.map((s, idx) => (
                     <div key={s.id} className="bg-white text-slate-900 p-4 rounded-xl shadow-sm flex justify-between items-center">
-                      <div>
+                      <div className="cursor-pointer" onClick={() => navigate(`/restaurant/${s.id}`)}>
                         <span className="text-xs font-bold text-orange-500 uppercase tracking-wider">Gợi ý #{idx + 1}</span>
-                        <h3 className="font-bold text-lg">{s.name}</h3>
+                        <h3 className="font-bold text-lg hover:underline">{s.name}</h3>
                       </div>
                       <button
                         onClick={() => handleChoose(s.id, idx)}
@@ -134,6 +137,17 @@ function App() {
         </div>
       )}
     </Layout>
+  );
+}
+
+function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/restaurant/:id" element={<RestaurantDetail />} />
+      </Routes>
+    </BrowserRouter>
   );
 }
 

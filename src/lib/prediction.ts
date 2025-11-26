@@ -55,7 +55,7 @@ export async function getSuggestions(
 
 
     // 3. Try RNN Prediction if enough history
-    if (historyData.length >= 10) {
+    if (historyData.length >= 15) {
         try {
             console.log('Using RNN for prediction...');
             return await predictRNN(weather, dayOfWeek, lat, long, getMealTime(), historyData, restaurants);
@@ -150,14 +150,44 @@ export async function trainModelIfNeeded() {
         .select('*')
         .eq('user_id', userId);
 
-    if (restaurants && history && history.length >= 5) {
+    if (restaurants && history && history.length >= 10) {
         console.log('Starting background training (Local Fine-tuning)...');
         await trainRNN(history as HistoryRecord[], restaurants, null, null);
         console.log('Local Training complete.');
     }
 }
 
-export async function trainGlobalModel() {
+export async function trainGlobalModel(force: boolean = false) {
+    // 1. Check if we need to train
+    const { data: latestModel } = await supabase
+        .from('models')
+        .select('created_at')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+    if (!force && latestModel) {
+        const lastTrainTime = new Date(latestModel.created_at).getTime();
+        const now = new Date().getTime();
+        const daysSinceLastTrain = (now - lastTrainTime) / (1000 * 3600 * 24);
+
+        if (daysSinceLastTrain < 3) {
+            console.log(`Global model is fresh (${daysSinceLastTrain.toFixed(1)} days old). Skipping.`);
+            return false;
+        }
+
+        // Check for new data volume
+        const { count } = await supabase
+            .from('history')
+            .select('*', { count: 'exact', head: true })
+            .gt('created_at', latestModel.created_at);
+
+        if (count !== null && count < 20) {
+            console.log(`Not enough new data (${count} records). Skipping.`);
+            return false;
+        }
+    }
+
     const { data: restaurants } = await supabase.from('restaurants').select('*').eq('active', true);
     // Fetch ALL history
     const { data: history } = await supabase.from('history').select('*');

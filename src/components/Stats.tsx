@@ -188,6 +188,35 @@ export function Stats() {
             </div>
 
 
+            <div className="flex justify-center pt-4">
+                <button
+                    onClick={async () => {
+                        const btn = document.getElementById('train-btn');
+                        if (btn) {
+                            btn.textContent = 'Đang training...';
+                            (btn as HTMLButtonElement).disabled = true;
+                        }
+                        try {
+                            const { trainGlobalModel } = await import('../lib/prediction');
+                            await trainGlobalModel(true);
+                            alert('Đã cập nhật Global Brain thành công!');
+                        } catch (e) {
+                            console.error(e);
+                            alert('Lỗi khi cập nhật Global Brain');
+                        } finally {
+                            if (btn) {
+                                btn.textContent = 'Cập nhật Global Brain';
+                                (btn as HTMLButtonElement).disabled = false;
+                            }
+                        }
+                    }}
+                    id="train-btn"
+                    className="bg-slate-900 text-white px-6 py-3 rounded-xl font-medium shadow-lg hover:bg-slate-800 active:scale-95 transition-all flex items-center gap-2"
+                >
+                    <TrendingUp className="w-4 h-4" />
+                    Cập nhật Global Brain
+                </button>
+            </div>
         </div>
     );
 }

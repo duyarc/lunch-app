@@ -5,8 +5,8 @@ import { supabase } from './supabase';
 import { type MealTime } from './utils';
 
 const MODEL_PATH = 'indexeddb://lunch-app-rnn-model';
-const MIN_HISTORY_FOR_TRAINING = 5; // Low for testing, increase for prod
-const EPOCHS = 50;
+const MIN_HISTORY_FOR_TRAINING = 10; // Low for testing, increase for prod
+const EPOCHS = 100;
 const LOOKBACK_WINDOW = 3; // How many past meals to look at
 
 // --- Types ---
@@ -268,6 +268,13 @@ export async function trainRNN(
 
     const xs = tf.tensor3d(inputs);
     const ys = tf.tensor2d(labels);
+
+    // Ensure model is compiled before training
+    model.compile({
+        optimizer: 'adam',
+        loss: 'categoricalCrossentropy',
+        metrics: ['accuracy']
+    });
 
     await model.fit(xs, ys, {
         epochs: EPOCHS,

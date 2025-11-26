@@ -57,6 +57,8 @@ function App() {
 
     // Trigger background training
     trainModelIfNeeded();
+    // Check if Global Brain needs update (Smart Trigger)
+    import('./lib/prediction').then(m => m.trainGlobalModel(false));
   }
 
   return (

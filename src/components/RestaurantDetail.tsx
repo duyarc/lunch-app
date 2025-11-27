@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import { Layout } from './Layout';
 import { MapPicker } from './MapPicker';
 import { useGeolocation } from '../hooks/useGeolocation';
-import { ArrowLeft, Save, MapPin, Phone, Loader2 } from 'lucide-react';
+import { ArrowLeft, Save, MapPin, Phone, Loader2, Navigation } from 'lucide-react';
 
 export function RestaurantDetail() {
     const { id } = useParams();
@@ -13,6 +13,17 @@ export function RestaurantDetail() {
     const [restaurant, setRestaurant] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [isMobile, setIsMobile] = useState(false);
+
+    useEffect(() => {
+        const checkMobile = () => {
+            const userAgent = navigator.userAgent || navigator.vendor || (window as any).opera;
+            if (/android/i.test(userAgent) || /iPad|iPhone|iPod/.test(userAgent)) {
+                setIsMobile(true);
+            }
+        };
+        checkMobile();
+    }, []);
 
     // Form State
     const [address, setAddress] = useState('');
@@ -88,14 +99,25 @@ export function RestaurantDetail() {
                             <h1 className="text-2xl font-bold text-slate-900">{restaurant.name}</h1>
                             <p className="text-slate-500 text-sm mt-1">Cập nhật thông tin chi tiết</p>
                         </div>
-                        <button
-                            onClick={handleSave}
-                            disabled={saving}
-                            className="bg-slate-900 text-white p-3 rounded-lg font-medium hover:bg-slate-800 disabled:opacity-50 flex items-center gap-2"
-                            title="Lưu thay đổi"
-                        >
-                            {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
-                        </button>
+                        <div className="flex gap-2">
+                            {isMobile && lat && long && (
+                                <button
+                                    onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${long}`, '_blank')}
+                                    className="bg-blue-600 text-white p-3 rounded-lg font-medium hover:bg-blue-700 flex items-center justify-center"
+                                    title="Chỉ đường"
+                                >
+                                    <Navigation className="w-5 h-5" />
+                                </button>
+                            )}
+                            <button
+                                onClick={handleSave}
+                                disabled={saving}
+                                className="bg-slate-900 text-white p-3 rounded-lg font-medium hover:bg-slate-800 disabled:opacity-50 flex items-center gap-2"
+                                title="Lưu thay đổi"
+                            >
+                                {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+                            </button>
+                        </div>
                     </div>
 
                     <div className="flex flex-col gap-8">
@@ -126,9 +148,7 @@ export function RestaurantDetail() {
                                 />
                             </div>
 
-                            <div className="p-4 bg-orange-50 rounded-lg border border-orange-100 text-sm text-orange-800">
-                                <strong>Mẹo:</strong> Chọn vị trí trên bản đồ bên dưới để lưu tọa độ chính xác.
-                            </div>
+
                         </div>
 
                         <div>

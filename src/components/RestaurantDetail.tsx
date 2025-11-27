@@ -101,13 +101,13 @@ export function RestaurantDetail() {
                         </div>
                         <div className="flex gap-2">
                             {isMobile && lat && long && (
-                                <button
-                                    onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${long}`, '_blank')}
+                                <a
+                                    href={`https://www.google.com/maps/dir/?api=1&destination=${lat},${long}`}
                                     className="bg-blue-600 text-white p-3 rounded-lg font-medium hover:bg-blue-700 flex items-center justify-center"
                                     title="Chỉ đường"
                                 >
                                     <Navigation className="w-5 h-5" />
-                                </button>
+                                </a>
                             )}
                             <button
                                 onClick={handleSave}

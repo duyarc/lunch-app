@@ -62,15 +62,19 @@ export function Stats() {
             const mealGroups: Record<string, Record<string, number>> = {
                 breakfast: {},
                 lunch: {},
-                dinner: {}
+                afternoon: {},
+                dinner: {},
+                latenight: {}
             };
 
             history.forEach((h: any) => {
                 const date = new Date(h.created_at);
                 const hour = date.getHours();
-                let meal: MealTime = 'dinner';
-                if (hour >= 4 && hour < 11) meal = 'breakfast';
+                let meal: MealTime = 'latenight';
+                if (hour >= 5 && hour < 11) meal = 'breakfast';
                 else if (hour >= 11 && hour < 15) meal = 'lunch';
+                else if (hour >= 15 && hour < 18) meal = 'afternoon';
+                else if (hour >= 18 && hour < 22) meal = 'dinner';
 
                 const name = h.restaurants?.name || 'Unknown';
                 mealGroups[meal][name] = (mealGroups[meal][name] || 0) + 1;
@@ -168,7 +172,12 @@ export function Stats() {
                     {stats.byMeal.map((group) => (
                         <div key={group.meal} className="bg-slate-50 p-3 rounded-lg">
                             <h4 className="text-xs font-bold uppercase text-slate-500 mb-2 border-b border-slate-200 pb-1">
-                                {group.meal === 'breakfast' ? 'Sáng' : group.meal === 'lunch' ? 'Trưa' : 'Tối'}
+                                {
+                                    group.meal === 'breakfast' ? 'Sáng' :
+                                        group.meal === 'lunch' ? 'Trưa' :
+                                            group.meal === 'afternoon' ? 'Chiều' :
+                                                group.meal === 'dinner' ? 'Tối' : 'Khuya'
+                                }
                             </h4>
                             {group.top.length > 0 ? (
                                 <div className="space-y-1">

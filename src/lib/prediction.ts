@@ -99,9 +99,11 @@ export async function getSuggestions(
         const mealPicks = historyData.filter(h => {
             const hDate = new Date(h.created_at);
             const hHour = hDate.getHours();
-            let hMeal = 'dinner';
-            if (hHour >= 4 && hHour < 11) hMeal = 'breakfast';
+            let hMeal = 'latenight';
+            if (hHour >= 5 && hHour < 11) hMeal = 'breakfast';
             else if (hHour >= 11 && hHour < 15) hMeal = 'lunch';
+            else if (hHour >= 15 && hHour < 18) hMeal = 'afternoon';
+            else if (hHour >= 18 && hHour < 22) hMeal = 'dinner';
             return hMeal === currentMeal;
         }).length;
 
@@ -109,9 +111,11 @@ export async function getSuggestions(
             const rMealPicks = historyData.filter(h => {
                 const hDate = new Date(h.created_at);
                 const hHour = hDate.getHours();
-                let hMeal = 'dinner';
-                if (hHour >= 4 && hHour < 11) hMeal = 'breakfast';
+                let hMeal = 'latenight';
+                if (hHour >= 5 && hHour < 11) hMeal = 'breakfast';
                 else if (hHour >= 11 && hHour < 15) hMeal = 'lunch';
+                else if (hHour >= 15 && hHour < 18) hMeal = 'afternoon';
+                else if (hHour >= 18 && hHour < 22) hMeal = 'dinner';
                 return h.restaurant_id === r.id && hMeal === currentMeal;
             }).length;
             const mealProb = rMealPicks / mealPicks;

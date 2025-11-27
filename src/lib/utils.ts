@@ -5,13 +5,15 @@ export function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs))
 }
 
-export type MealTime = 'breakfast' | 'lunch' | 'dinner';
+export type MealTime = 'breakfast' | 'lunch' | 'afternoon' | 'dinner' | 'latenight';
 
 export function getMealTime(): MealTime {
     const hour = new Date().getHours();
-    if (hour >= 4 && hour < 11) return 'breakfast';
+    if (hour >= 5 && hour < 11) return 'breakfast';
     if (hour >= 11 && hour < 15) return 'lunch';
-    return 'dinner';
+    if (hour >= 15 && hour < 18) return 'afternoon';
+    if (hour >= 18 && hour < 22) return 'dinner';
+    return 'latenight';
 }
 
 export function getUserId(): string {
@@ -35,6 +37,8 @@ export function getMealTitle(meal: MealTime): string {
     switch (meal) {
         case 'breakfast': return 'Sáng nay ăn gì?';
         case 'lunch': return 'Trưa nay ăn gì?';
+        case 'afternoon': return 'Chiều nay ăn gì?';
         case 'dinner': return 'Tối nay ăn gì?';
+        case 'latenight': return 'Đêm khuya ăn gì?';
     }
 }

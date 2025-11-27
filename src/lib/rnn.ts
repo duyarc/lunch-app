@@ -4,7 +4,7 @@ import { type WeatherData } from './weather';
 import { supabase } from './supabase';
 import { type MealTime } from './utils';
 
-const MODEL_PATH = 'indexeddb://lunch-app-rnn-model';
+const MODEL_PATH = 'indexeddb://lunch-app-rnn-model-v2';
 const MIN_HISTORY_FOR_TRAINING = 10; // Low for testing, increase for prod
 const EPOCHS = 100;
 const LOOKBACK_WINDOW = 3; // How many past meals to look at
@@ -59,8 +59,10 @@ function createFeatureVector(day: number, weather: string, lat: number | null, l
 
     let mIdx = 0;
     if (meal === 'breakfast') mIdx = 0;
-    else if (meal === 'lunch') mIdx = 0.5;
-    else if (meal === 'dinner') mIdx = 1;
+    else if (meal === 'lunch') mIdx = 0.25;
+    else if (meal === 'afternoon') mIdx = 0.5;
+    else if (meal === 'dinner') mIdx = 0.75;
+    else if (meal === 'latenight') mIdx = 1;
 
     return [dSin, dCos, wIdx / 7, l1, l2, mIdx];
 }
@@ -240,9 +242,11 @@ export async function trainRNN(
 
             // Infer meal time from record
             const hHour = new Date(record.created_at).getHours();
-            let hMeal: MealTime = 'dinner';
-            if (hHour >= 4 && hHour < 11) hMeal = 'breakfast';
+            let hMeal: MealTime = 'latenight';
+            if (hHour >= 5 && hHour < 11) hMeal = 'breakfast';
             else if (hHour >= 11 && hHour < 15) hMeal = 'lunch';
+            else if (hHour >= 15 && hHour < 18) hMeal = 'afternoon';
+            else if (hHour >= 18 && hHour < 22) hMeal = 'dinner';
 
             const features = createFeatureVector(record.day_of_week, record.weather, rLat, rLong, hMeal);
 
@@ -374,9 +378,11 @@ export async function predictRNN(
 
                 // Infer meal time
                 const hHour = new Date(r.created_at).getHours();
-                let hMeal: MealTime = 'dinner';
-                if (hHour >= 4 && hHour < 11) hMeal = 'breakfast';
+                let hMeal: MealTime = 'latenight';
+                if (hHour >= 5 && hHour < 11) hMeal = 'breakfast';
                 else if (hHour >= 11 && hHour < 15) hMeal = 'lunch';
+                else if (hHour >= 15 && hHour < 18) hMeal = 'afternoon';
+                else if (hHour >= 18 && hHour < 22) hMeal = 'dinner';
 
                 // Use historical location if available, otherwise fallback to current or 0
                 const rLat = r.lat !== undefined ? r.lat : (lat || 0);

@@ -63,7 +63,7 @@ function HomePage() {
   }
 
   return (
-    <Layout>
+    <Layout hideHeader={true}>
       <div className="flex justify-end mb-4">
         <button
           onClick={() => setView(view === 'home' ? 'stats' : 'home')}

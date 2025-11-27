@@ -116,7 +116,7 @@ export function Stats() {
                         <span className="text-xs font-medium uppercase">Tổng lượt chọn</span>
                     </div>
                     <div className="text-2xl font-bold text-slate-900">{stats.totalPicks}</div>
-                    <div className="text-xs text-slate-400 mt-1">Bữa trưa đã ghi nhận</div>
+                    <div className="text-xs text-slate-400 mt-1">Lượt ăn đã ghi nhận</div>
                 </div>
             </div>
 

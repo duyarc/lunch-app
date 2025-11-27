@@ -212,15 +212,50 @@ export async function recordChoice(
     long: number | null
 ) {
     const userId = getUserId();
-    const { error } = await supabase.from('history').insert([{
-        restaurant_id: restaurantId,
-        weather: weather?.condition || 'Unknown',
-        day_of_week: new Date().getDay(),
-        is_suggestion_hit: isSuggestion,
-        lat: lat,
-        long: long,
-        user_id: userId
-    }]);
 
-    if (error) console.error('Error recording choice:', error);
+    // 1. Anti-Poisoning / Rate Limiting
+    // Check for recent entry (last 1 hour) by this user
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+
+    const { data: recent } = await supabase
+        .from('history')
+        .select('id, created_at')
+        .eq('user_id', userId)
+        .gt('created_at', oneHourAgo)
+        .limit(1)
+        .single();
+
+    if (recent) {
+        // Update existing entry (User changed their mind)
+        console.log('Updating recent choice:', recent.id);
+        const { error } = await supabase
+            .from('history')
+            .update({
+                restaurant_id: restaurantId,
+                weather: weather?.condition || 'Unknown',
+                day_of_week: new Date().getDay(),
+                is_suggestion_hit: isSuggestion,
+                lat: lat,
+                long: long,
+                // Optionally update created_at to now, or keep original time. 
+                // Updating it makes sense if we consider this the "final" decision time.
+                created_at: new Date().toISOString()
+            })
+            .eq('id', recent.id);
+
+        if (error) console.error('Error updating choice:', error);
+    } else {
+        // Insert new entry
+        const { error } = await supabase.from('history').insert([{
+            restaurant_id: restaurantId,
+            weather: weather?.condition || 'Unknown',
+            day_of_week: new Date().getDay(),
+            is_suggestion_hit: isSuggestion,
+            lat: lat,
+            long: long,
+            user_id: userId
+        }]);
+
+        if (error) console.error('Error recording choice:', error);
+    }
 }

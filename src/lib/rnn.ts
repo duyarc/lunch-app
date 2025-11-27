@@ -111,6 +111,24 @@ class SupabaseIOHandler implements tf.io.IOHandler {
             throw new Error('Failed to save to Supabase');
         }
 
+        // Cleanup: Keep only last 5 models to save space
+        try {
+            const { data: models } = await supabase
+                .from('models')
+                .select('id')
+                .order('created_at', { ascending: false });
+
+            if (models && models.length > 5) {
+                const toDelete = models.slice(5).map(m => m.id);
+                if (toDelete.length > 0) {
+                    await supabase.from('models').delete().in('id', toDelete);
+                    console.log(`Cleaned up ${toDelete.length} old model(s).`);
+                }
+            }
+        } catch (cleanupError) {
+            console.warn('Model cleanup failed (non-critical):', cleanupError);
+        }
+
         return {
             modelArtifactsInfo: {
                 dateSaved: new Date(),

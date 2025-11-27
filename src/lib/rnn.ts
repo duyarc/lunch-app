@@ -25,11 +25,35 @@ interface HistoryRecord {
     long?: number;
 }
 
-// ... (Restaurant interface remains same)
+interface Restaurant {
+    id: string;
+    name: string;
+}
 
 // --- Feature Engineering ---
 
-// ... (WEATHER_MAP and helpers remain same)
+// Map weather string to index
+const WEATHER_MAP: Record<string, number> = {
+    'Clear': 0,
+    'Clouds': 1,
+    'Rain': 2,
+    'Drizzle': 3,
+    'Thunderstorm': 4,
+    'Snow': 5,
+    'Mist': 6,
+    'Unknown': 7
+};
+
+function getDaySinCos(dayOfWeek: number) {
+    // 0-6 (Sun-Sat)
+    const angle = (dayOfWeek / 7) * 2 * Math.PI;
+    return [Math.sin(angle), Math.cos(angle)];
+}
+
+function getWeatherIndex(weather: string) {
+    const main = weather.split(' ')[0]; // Simple heuristic
+    return WEATHER_MAP[main] || WEATHER_MAP['Unknown'];
+}
 
 // Create a feature vector for a single time step
 // [Day_Sin, Day_Cos, Weather_Index, Temperature_Norm, Lat, Long, Meal_Time_Index]
@@ -61,7 +85,100 @@ function createFeatureVector(
     return [dSin, dCos, wIdx / 7, tNorm, l1, l2, mIdx];
 }
 
-// ... (SupabaseIOHandler remains same)
+// --- SupabaseIOHandler ---
+class SupabaseIOHandler implements tf.io.IOHandler {
+    async save(modelArtifacts: tf.io.ModelArtifacts): Promise<tf.io.SaveResult> {
+        let weightDataBuffer: ArrayBuffer;
+        if (modelArtifacts.weightData instanceof ArrayBuffer) {
+            weightDataBuffer = modelArtifacts.weightData;
+        } else if (Array.isArray(modelArtifacts.weightData)) {
+            weightDataBuffer = modelArtifacts.weightData as unknown as ArrayBuffer;
+        } else {
+            weightDataBuffer = new ArrayBuffer(0);
+        }
+
+        const weightDataStr = weightDataBuffer.byteLength > 0
+            ? btoa(String.fromCharCode(...new Uint8Array(weightDataBuffer)))
+            : '';
+
+        const modelJson = {
+            modelTopology: modelArtifacts.modelTopology,
+            format: modelArtifacts.format,
+            generatedBy: modelArtifacts.generatedBy,
+            convertedBy: modelArtifacts.convertedBy
+        };
+
+        const weightsJson = {
+            weightSpecs: modelArtifacts.weightSpecs,
+            weightData: weightDataStr
+        };
+
+        const { error } = await supabase.from('models').insert([{
+            model_json: modelJson,
+            weights: weightsJson
+        }]);
+
+        if (error) {
+            console.error('Error saving model to Supabase:', error);
+            throw new Error('Failed to save to Supabase');
+        }
+
+        // Cleanup: Keep only last 5 models to save space
+        try {
+            const { data: models } = await supabase
+                .from('models')
+                .select('id')
+                .order('created_at', { ascending: false });
+
+            if (models && models.length > 5) {
+                const toDelete = models.slice(5).map(m => m.id);
+                if (toDelete.length > 0) {
+                    await supabase.from('models').delete().in('id', toDelete);
+                    console.log(`Cleaned up ${toDelete.length} old model(s).`);
+                }
+            }
+        } catch (cleanupError) {
+            console.warn('Model cleanup failed (non-critical):', cleanupError);
+        }
+
+        return {
+            modelArtifactsInfo: {
+                dateSaved: new Date(),
+                modelTopologyType: 'JSON',
+                weightDataBytes: modelArtifacts.weightData ? (modelArtifacts.weightData as ArrayBuffer).byteLength : 0
+            }
+        };
+    }
+
+    async load(): Promise<tf.io.ModelArtifacts> {
+        const { data, error } = await supabase
+            .from('models')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+
+        if (error || !data) {
+            throw new Error('No model found in Supabase');
+        }
+
+        const modelJson = data.model_json;
+        const weightsJson = data.weights;
+
+        const weightData = weightsJson.weightData
+            ? new Uint8Array(atob(weightsJson.weightData).split('').map(c => c.charCodeAt(0))).buffer
+            : new ArrayBuffer(0);
+
+        return {
+            modelTopology: modelJson.modelTopology,
+            format: modelJson.format,
+            generatedBy: modelJson.generatedBy,
+            convertedBy: modelJson.convertedBy,
+            weightSpecs: weightsJson.weightSpecs,
+            weightData: weightData
+        };
+    }
+}
 
 // --- Model Logic ---
 

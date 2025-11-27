@@ -152,7 +152,24 @@ export function RestaurantDetail() {
                         </div>
 
                         <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-2">Vị trí trên bản đồ</label>
+                            <div className="flex justify-between items-center mb-2">
+                                <label className="block text-sm font-medium text-slate-700">Vị trí trên bản đồ</label>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (latitude && longitude) {
+                                            setLat(latitude);
+                                            setLong(longitude);
+                                        } else {
+                                            alert('Chưa lấy được vị trí hiện tại. Hãy bật GPS và đợi một chút.');
+                                        }
+                                    }}
+                                    className="text-xs flex items-center gap-1 text-blue-600 hover:text-blue-800 font-medium bg-blue-50 px-2 py-1 rounded-md transition-colors"
+                                >
+                                    <MapPin className="w-3 h-3" />
+                                    Dùng vị trí hiện tại
+                                </button>
+                            </div>
                             <MapPicker
                                 initialLat={lat}
                                 initialLong={long}

@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
+import { useState, useEffect } from 'react';
+import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 
@@ -25,6 +25,14 @@ interface MapPickerProps {
     readOnly?: boolean;
 }
 
+function Recenter({ lat, long }: { lat: number, long: number }) {
+    const map = useMap();
+    useEffect(() => {
+        map.setView([lat, long], map.getZoom());
+    }, [lat, long, map]);
+    return null;
+}
+
 function LocationMarker({ onSelect, initialPos }: { onSelect?: (lat: number, long: number) => void, initialPos?: [number, number] }) {
     const [position, setPosition] = useState<[number, number] | null>(initialPos || null);
 
@@ -36,6 +44,12 @@ function LocationMarker({ onSelect, initialPos }: { onSelect?: (lat: number, lon
             }
         },
     });
+
+    useEffect(() => {
+        if (initialPos) {
+            setPosition(initialPos);
+        }
+    }, [initialPos]);
 
     return position === null ? null : (
         <Marker position={position}></Marker>
@@ -65,6 +79,7 @@ export function MapPicker({ initialLat, initialLong, userLat, userLong, onLocati
                     initialPos={initialLat && initialLong ? [initialLat, initialLong] : undefined}
                     onSelect={readOnly ? undefined : onLocationSelect}
                 />
+                {initialLat && initialLong && <Recenter lat={initialLat} long={initialLong} />}
             </MapContainer>
         </div>
     );

@@ -4,7 +4,7 @@ import { Layout } from './components/Layout';
 import { RestaurantList } from './components/RestaurantList';
 import { AddRestaurant } from './components/AddRestaurant';
 import { Stats } from './components/Stats';
-import { ManualSelector } from './components/ManualSelector';
+
 import { RestaurantDetail } from './components/RestaurantDetail';
 import { useAppContext } from './hooks/useAppContext';
 import { useGeolocation } from './hooks/useGeolocation';
@@ -121,15 +121,16 @@ function HomePage() {
                 </div>
               )}
 
-              <ManualSelector
-                restaurants={allRestaurants}
-                onSelect={(id) => handleChoose(id, -1)}
-              />
+
             </div>
           </section>
 
           <section>
-            <RestaurantList key={refreshKey} restaurants={allRestaurants} />
+            <RestaurantList
+              key={refreshKey}
+              restaurants={allRestaurants}
+              onChoose={(id) => handleChoose(id, -1)}
+            />
             <AddRestaurant onAdded={handleRestaurantAdded} />
           </section>
         </div>

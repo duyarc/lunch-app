@@ -11,6 +11,7 @@ interface Restaurant {
 interface HistoryRecord {
     restaurant_id: string;
     weather: string;
+    temperature?: number; // Added temperature
     day_of_week: number;
     created_at: string;
     lat?: number;
@@ -21,7 +22,8 @@ interface HistoryRecord {
 // Weights for the algorithm
 const WEIGHTS = {
     BASE: 1.0,
-    WEATHER: 2.0, // High impact for weather
+    WEATHER: 2.0, // High impact for weather condition
+    TEMPERATURE: 1.5, // Medium-High impact for temperature
     DAY: 1.5,     // Medium impact for day of week
     MEAL_TIME: 2.5, // Very High impact for meal time (Breakfast/Lunch/Dinner)
     RECENCY: -0.5 // Penalty for recently chosen (variety)
@@ -39,19 +41,12 @@ export async function getSuggestions(
     if (!restaurants || restaurants.length === 0) return [];
 
     // 2. Fetch history for context analysis
-    // Strategy: Fetch GLOBAL history for cold start, but prioritize LOCAL for personalization?
-    // Actually, for "Hybrid", we should fetch:
-    // - Global stats (for fallback scoring)
-    // - Local history (for RNN context)
-
-    // For simplicity in this step: Fetch ALL history but separate them.
     const { data: history } = await supabase.from('history').select('*');
     const allHistory = (history || []) as HistoryRecord[];
     const userId = getUserId();
     const userHistory = allHistory.filter(h => h.user_id === userId);
 
     // Use userHistory for RNN if available, otherwise might fallback to global?
-    // The RNN model (Local) expects user history sequence.
     const historyData = userHistory.length >= 3 ? userHistory : allHistory; // Fallback to global if new user
 
 
@@ -77,13 +72,27 @@ export async function getSuggestions(
         const popularity = totalPicks > 0 ? restaurantPicks / totalPicks : 0;
         score += popularity * WEIGHTS.BASE;
 
-        // Context: Weather
+        // Context: Weather Condition
         if (weather) {
             const weatherPicks = historyData.filter(h => h.weather === weather.condition).length;
             if (weatherPicks > 0) {
                 const rWeatherPicks = historyData.filter(h => h.restaurant_id === r.id && h.weather === weather.condition).length;
                 const weatherProb = rWeatherPicks / weatherPicks;
                 score += weatherProb * WEIGHTS.WEATHER;
+            }
+        }
+
+        // Context: Temperature Affinity
+        if (weather && weather.temperature) {
+            // Find average temperature when this restaurant was picked
+            const rHistory = historyData.filter(h => h.restaurant_id === r.id && h.temperature !== undefined && h.temperature !== null);
+            if (rHistory.length > 0) {
+                const avgTemp = rHistory.reduce((sum, h) => sum + (h.temperature || 0), 0) / rHistory.length;
+                const diff = Math.abs(weather.temperature - avgTemp);
+                // Score decreases as difference increases. Max diff considered is 20 degrees.
+                // If diff is 0, add full weight. If diff is 20, add 0.
+                const tempScore = Math.max(0, 1 - (diff / 20));
+                score += tempScore * WEIGHTS.TEMPERATURE;
             }
         }
 
@@ -204,6 +213,19 @@ export async function trainGlobalModel(force: boolean = false) {
     return false;
 }
 
+interface HistoryRecord {
+    restaurant_id: string;
+    weather: string;
+    temperature?: number; // Added temperature
+    day_of_week: number;
+    created_at: string;
+    lat?: number;
+    long?: number;
+    user_id?: string;
+}
+
+// ... (WEIGHTS constant remains same)
+
 export async function recordChoice(
     restaurantId: string,
     weather: WeatherData | null,
@@ -233,6 +255,7 @@ export async function recordChoice(
             .update({
                 restaurant_id: restaurantId,
                 weather: weather?.condition || 'Unknown',
+                temperature: weather?.temperature, // Save temperature
                 day_of_week: new Date().getDay(),
                 is_suggestion_hit: isSuggestion,
                 lat: lat,
@@ -249,6 +272,7 @@ export async function recordChoice(
         const { error } = await supabase.from('history').insert([{
             restaurant_id: restaurantId,
             weather: weather?.condition || 'Unknown',
+            temperature: weather?.temperature, // Save temperature
             day_of_week: new Date().getDay(),
             is_suggestion_hit: isSuggestion,
             lat: lat,

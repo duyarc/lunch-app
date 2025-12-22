@@ -2,17 +2,12 @@ import * as tf from '@tensorflow/tfjs';
 // Force update
 import { type WeatherData } from './weather';
 import { supabase } from './supabase';
-import { type MealTime } from './utils';
+import { type MealTime, type Restaurant } from './utils';
 
 const MODEL_PATH = 'indexeddb://lunch-app-rnn-model-v2';
 const MIN_HISTORY_FOR_TRAINING = 10; // Low for testing, increase for prod
 const EPOCHS = 100;
 const LOOKBACK_WINDOW = 3; // How many past meals to look at
-
-// --- Types ---
-// ... (Imports remain same)
-
-// ... (Constants remain same)
 
 // --- Types ---
 interface HistoryRecord {
@@ -25,10 +20,7 @@ interface HistoryRecord {
     long?: number;
 }
 
-interface Restaurant {
-    id: string;
-    name: string;
-}
+// Local Restaurant interface removed, using import from utils
 
 // --- Feature Engineering ---
 

@@ -7,6 +7,14 @@ export function cn(...inputs: ClassValue[]) {
 
 export type MealTime = 'breakfast' | 'lunch' | 'afternoon' | 'dinner' | 'latenight';
 
+export interface Restaurant {
+    id: string;
+    name: string;
+    lat?: number;
+    long?: number;
+    score?: number;
+}
+
 export function getMealTime(): MealTime {
     const hour = new Date().getHours();
     if (hour >= 5 && hour < 11) return 'breakfast';

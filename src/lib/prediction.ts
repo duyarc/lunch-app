@@ -1,15 +1,9 @@
 import { supabase } from './supabase';
 import { type WeatherData } from './weather';
-import { getMealTime, getUserId, calculateDistance } from './utils';
+import { getMealTime, getUserId, calculateDistance, type Restaurant } from './utils';
 import { trainRNN, predictRNN } from './rnn';
 
-interface Restaurant {
-    id: string;
-    name: string;
-    lat?: number;
-    long?: number;
-    score?: number;
-}
+// Removed local Restaurant interface
 
 interface HistoryRecord {
     restaurant_id: string;

@@ -8,6 +8,7 @@ interface Restaurant {
     name: string;
     lat?: number;
     long?: number;
+    score?: number;
 }
 
 interface HistoryRecord {
@@ -57,7 +58,23 @@ export async function getSuggestions(
     if (historyData.length >= 15) {
         try {
             console.log('Using RNN for prediction...');
-            return await predictRNN(weather, dayOfWeek, lat, long, getMealTime(), historyData, restaurants, limit);
+            const rnnSuggestions = await predictRNN(weather, dayOfWeek, lat, long, getMealTime(), historyData, restaurants, limit);
+
+            // Apply Distance Penalty to RNN results (Post-processing)
+            // Since RNN outputs probability (0-1), we use multiplication to filter/penalize.
+            if (lat && long) {
+                const nearby = rnnSuggestions.map(r => {
+                    let mp = 1.0;
+                    if (r.lat && r.long) {
+                        const dist = calculateDistance(lat, long, r.lat, r.long);
+                        mp = calculateDistanceScore(dist);
+                    }
+                    return { ...r, score: (r.score || 0) * mp };
+                });
+                return nearby.sort((a, b) => (b.score || 0) - (a.score || 0));
+            }
+            return rnnSuggestions;
+
         } catch (e) {
             console.warn('RNN Prediction failed, falling back to scoring:', e);
         }
@@ -131,18 +148,7 @@ export async function getSuggestions(
             if (r.lat && r.long) {
                 // We have both user and restaurant location
                 const dist = calculateDistance(lat, long, r.lat, r.long);
-
-                // Scoring strategy (Walking Friendly):
-                // < 0.4km: Full score (1.0)
-                // 0.4km - 2.0km: Linear decay (1.0 -> 0.0)
-                // > 2.0km: 0.0
-                let distScore = 0;
-                if (dist <= 0.4) {
-                    distScore = 1;
-                } else if (dist <= 2.0) {
-                    distScore = 1 - ((dist - 0.4) / 1.6);
-                }
-
+                const distScore = calculateDistanceScore(dist);
                 score += distScore * WEIGHTS.DISTANCE;
             } else {
                 // Restaurant location unknown - give neutral score (0.5) to not penalize too hard
@@ -177,6 +183,19 @@ function getMealTimeFromHour(hour: number): string {
     if (hour >= 15 && hour < 18) return 'afternoon';
     if (hour >= 18 && hour < 22) return 'dinner';
     return 'latenight';
+}
+
+function calculateDistanceScore(dist: number): number {
+    // Scoring strategy (Walking Friendly):
+    // < 0.4km: Full score (1.0)
+    // 0.4km - 2.0km: Linear decay (1.0 -> 0.0)
+    // > 2.0km: 0.0
+    if (dist <= 0.4) {
+        return 1.0;
+    } else if (dist <= 2.0) {
+        return 1.0 - ((dist - 0.4) / 1.6);
+    }
+    return 0.0;
 }
 
 export async function trainModelIfNeeded() {

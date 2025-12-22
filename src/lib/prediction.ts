@@ -1,11 +1,13 @@
 import { supabase } from './supabase';
 import { type WeatherData } from './weather';
-import { getMealTime, getUserId } from './utils';
+import { getMealTime, getUserId, calculateDistance } from './utils';
 import { trainRNN, predictRNN } from './rnn';
 
 interface Restaurant {
     id: string;
     name: string;
+    lat?: number;
+    long?: number;
 }
 
 interface HistoryRecord {
@@ -26,6 +28,7 @@ const WEIGHTS = {
     TEMPERATURE: 1.5, // Medium-High impact for temperature
     DAY: 1.5,     // Medium impact for day of week
     MEAL_TIME: 2.5, // Very High impact for meal time (Breakfast/Lunch/Dinner)
+    DISTANCE: 2.5, // High impact for distance
     RECENCY: -0.5 // Penalty for recently chosen (variety)
 };
 
@@ -108,27 +111,43 @@ export async function getSuggestions(
         const mealPicks = historyData.filter(h => {
             const hDate = new Date(h.created_at);
             const hHour = hDate.getHours();
-            let hMeal = 'latenight';
-            if (hHour >= 5 && hHour < 11) hMeal = 'breakfast';
-            else if (hHour >= 11 && hHour < 15) hMeal = 'lunch';
-            else if (hHour >= 15 && hHour < 18) hMeal = 'afternoon';
-            else if (hHour >= 18 && hHour < 22) hMeal = 'dinner';
-            return hMeal === currentMeal;
+            const hMealTime = getMealTimeFromHour(hHour);
+            return hMealTime === currentMeal;
         }).length;
 
         if (mealPicks > 0) {
             const rMealPicks = historyData.filter(h => {
                 const hDate = new Date(h.created_at);
                 const hHour = hDate.getHours();
-                let hMeal = 'latenight';
-                if (hHour >= 5 && hHour < 11) hMeal = 'breakfast';
-                else if (hHour >= 11 && hHour < 15) hMeal = 'lunch';
-                else if (hHour >= 15 && hHour < 18) hMeal = 'afternoon';
-                else if (hHour >= 18 && hHour < 22) hMeal = 'dinner';
-                return h.restaurant_id === r.id && hMeal === currentMeal;
+                const hMealTime = getMealTimeFromHour(hHour);
+                return h.restaurant_id === r.id && hMealTime === currentMeal;
             }).length;
             const mealProb = rMealPicks / mealPicks;
             score += mealProb * WEIGHTS.MEAL_TIME;
+        }
+
+        // Context: Distance
+        if (lat && long) {
+            if (r.lat && r.long) {
+                // We have both user and restaurant location
+                const dist = calculateDistance(lat, long, r.lat, r.long);
+
+                // Scoring strategy (Walking Friendly):
+                // < 0.4km: Full score (1.0)
+                // 0.4km - 2.0km: Linear decay (1.0 -> 0.0)
+                // > 2.0km: 0.0
+                let distScore = 0;
+                if (dist <= 0.4) {
+                    distScore = 1;
+                } else if (dist <= 2.0) {
+                    distScore = 1 - ((dist - 0.4) / 1.6);
+                }
+
+                score += distScore * WEIGHTS.DISTANCE;
+            } else {
+                // Restaurant location unknown - give neutral score (0.5) to not penalize too hard
+                score += 0.5 * WEIGHTS.DISTANCE;
+            }
         }
 
         // Context: Recency (Penalty)
@@ -150,6 +169,14 @@ export async function getSuggestions(
     // 5. Sort and return
     const sorted = scores.sort((a, b) => b.score - a.score);
     return limit === -1 ? sorted : sorted.slice(0, limit);
+}
+
+function getMealTimeFromHour(hour: number): string {
+    if (hour >= 5 && hour < 11) return 'breakfast';
+    if (hour >= 11 && hour < 15) return 'lunch';
+    if (hour >= 15 && hour < 18) return 'afternoon';
+    if (hour >= 18 && hour < 22) return 'dinner';
+    return 'latenight';
 }
 
 export async function trainModelIfNeeded() {

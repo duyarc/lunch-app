@@ -44,6 +44,52 @@ export async function getSuggestions(
     const userId = getUserId();
     const userHistory = allHistory.filter(h => h.user_id === userId);
 
+    // Filter Stale Restaurants (Not picked by ANYONE in > 90 days)
+    // Exception: New restaurants (Never picked) are kept.
+    const ninetyDaysAgo = new Date();
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+
+    // Create a map of last pick time for performance
+    const lastPickMap = new Map<string, Date>();
+    const pickCounts = new Map<string, number>(); // Track pick counts for 0-pick detection
+
+    allHistory.forEach(h => {
+        const hDate = new Date(h.created_at);
+        const currentLast = lastPickMap.get(h.restaurant_id);
+        if (!currentLast || hDate > currentLast) {
+            lastPickMap.set(h.restaurant_id, hDate);
+        }
+        pickCounts.set(h.restaurant_id, (pickCounts.get(h.restaurant_id) || 0) + 1);
+    });
+
+    const activeRestaurants: Restaurant[] = [];
+    const staleRestaurantIds: string[] = [];
+
+    restaurants.forEach(r => {
+        const lastPickDate = lastPickMap.get(r.id);
+        const totalPicks = pickCounts.get(r.id) || 0;
+
+        if (totalPicks > 0 && lastPickDate && lastPickDate < ninetyDaysAgo) {
+            // It has history, but it's old. Archive it.
+            staleRestaurantIds.push(r.id);
+        } else {
+            // Keep it (New or Active)
+            activeRestaurants.push(r);
+        }
+    });
+
+    // Fire-and-forget: Archive stale restaurants in background
+    if (staleRestaurantIds.length > 0) {
+        console.log(`Auto-archiving ${staleRestaurantIds.length} stale restaurants...`);
+        supabase.from('restaurants').update({ active: false }).in('id', staleRestaurantIds).then(({ error }) => {
+            if (error) console.error('Failed to auto-archive:', error);
+        });
+    }
+
+    if (activeRestaurants.length === 0) return []; // Should rarely happen
+
+    if (activeRestaurants.length === 0) return []; // Should rarely happen
+
     // Use userHistory for RNN if available, otherwise might fallback to global?
     const historyData = userHistory.length >= 3 ? userHistory : allHistory; // Fallback to global if new user
 
@@ -52,10 +98,8 @@ export async function getSuggestions(
     if (historyData.length >= 15) {
         try {
             console.log('Using RNN for prediction...');
-            const rnnSuggestions = await predictRNN(weather, dayOfWeek, lat, long, getMealTime(), historyData, restaurants, limit);
+            const rnnSuggestions = await predictRNN(weather, dayOfWeek, lat, long, getMealTime(), historyData, activeRestaurants, limit);
 
-            // Apply Distance Penalty to RNN results (Post-processing)
-            // Since RNN outputs probability (0-1), we use multiplication to filter/penalize.
             if (lat && long) {
                 const nearby = rnnSuggestions.map(r => {
                     let mp = 1.0;
@@ -63,11 +107,26 @@ export async function getSuggestions(
                         const dist = calculateDistance(lat, long, r.lat, r.long);
                         mp = calculateDistanceScore(dist);
                     }
+
+                    // Penalty for New Restaurants (0 picks) in RNN mode too
+                    const globalPicks = allHistory.filter(h => h.restaurant_id === r.id).length;
+                    if (globalPicks === 0) {
+                        mp *= 0.1;
+                    }
+
                     return { ...r, score: (r.score || 0) * mp };
                 });
                 return nearby.sort((a, b) => (b.score || 0) - (a.score || 0));
             }
-            return rnnSuggestions;
+
+            // Also punish 0-pick items if no location data exist
+            const adjustedRnn = rnnSuggestions.map(r => {
+                const globalPicks = allHistory.filter(h => h.restaurant_id === r.id).length;
+                let mp = 1.0;
+                if (globalPicks === 0) mp *= 0.1;
+                return { ...r, score: (r.score || 0) * mp };
+            });
+            return adjustedRnn.sort((a, b) => (b.score || 0) - (a.score || 0));
 
         } catch (e) {
             console.warn('RNN Prediction failed, falling back to scoring:', e);
@@ -77,7 +136,7 @@ export async function getSuggestions(
     // 4. Fallback: Scoring Algorithm
     console.log('Using Weighted Scoring for prediction...');
     const currentMeal = getMealTime();
-    const scores = restaurants.map(r => {
+    const scores = activeRestaurants.map(r => {
         let score = WEIGHTS.BASE;
 
         // Calculate Popularity (Base Probability)
@@ -161,6 +220,16 @@ export async function getSuggestions(
             if (daysSince < 3) { // If picked within last 3 days
                 score += WEIGHTS.RECENCY * (3 - daysSince); // Penalty reduces as time passes
             }
+        }
+
+        // Penalty for New Restaurants (0 picks) to put them at bottom
+        // We know totalPicks calculation above: const restaurantPicks = historyData.filter(h => h.restaurant_id === r.id).length;
+        // BUT historyData is just userHistory or allHistory depending on mode.
+        // We should check GLOBAL picks to be fair.
+        // We can do a quick check on allHistory for *some* picks.
+        const globalPicks = allHistory.filter(h => h.restaurant_id === r.id).length;
+        if (globalPicks === 0) {
+            score *= 0.1; // Heavy penalty: Reduction to 10% of score
         }
 
         return { ...r, score };
